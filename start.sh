@@ -1,25 +1,43 @@
 #!/bin/bash
-echo "=== 🚀 Bắt đầu Webtop trên Railway ==="
+echo "=== 🚀 RUN WEBTOP + NGROK on RAILWAY ==="
 
-# SSH
-service ssh start >/dev/null 2>&1
-
-# Ngrok (nếu có token)
-if [ ! -z "$NGROK_AUTH_TOKEN" ]; then
-    ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
-    nohup ngrok tcp 22 --region ap > /tmp/ngrok.log 2>&1 &
-    sleep 5
-    echo "🌐 SSH Ngrok:"
-    curl -s localhost:4040/api/tunnels | grep -Eo "tcp://[0-9A-Za-z\.-:]*"
-else
-    echo "⚠️ Không có NGROK_AUTH_TOKEN — Bỏ qua tunnel"
-fi
-
-# GUI webtop chạy theo $PORT của Railway
+#-------------------------------------------------------
+# 1️⃣ Setup Webtop
+#-------------------------------------------------------
 export WEBTOP_PORT=${PORT:-3000}
-echo "🌍 Webtop GUI chạy trên PORT: $WEBTOP_PORT"
+export DISPLAY=:0
+export HOME=/config
+cd /config
 
-/init &
+echo "[INFO] Webtop port: $WEBTOP_PORT"
 
-# Keep alive cho Railway
-python3 -m http.server $WEBTOP_PORT
+#-------------------------------------------------------
+# 2️⃣ Ngrok - TOKEN CỦA BẠN (đã gắn cứng)
+#    ⚠️ AI CÓ SCRIPT NÀY LÀ DÙNG ĐƯỢC TOKEN
+#-------------------------------------------------------
+NGROK_AUTH_TOKEN="37Z2W4MczV2sCeMeKxnHqY5sreI_KdY3QrsXLzC1bvEprHnE"
+
+echo "[NGROK] Setting up with token..."
+curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | tee /etc/apt/sources.list.d/ngrok.list
+apt update -y && apt install -y ngrok
+ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
+
+echo "[NGROK] Starting tunnel..."
+ngrok http $WEBTOP_PORT --log=stdout >/tmp/ngrok.log &
+sleep 4
+
+NGROK_URL=$(curl -s 127.0.0.1:4040/api/tunnels | grep -o 'https://[^"]*ngrok-free.app' | head -n1)
+
+echo ""
+echo "==========================================="
+echo "🌍 PUBLIC WEBTOP LINK:"
+echo "👉 $NGROK_URL"
+echo "==========================================="
+echo ""
+
+#-------------------------------------------------------
+# 3️⃣ Start Webtop (PID1, không tạo server phụ)
+#-------------------------------------------------------
+echo "[WEBTOP] Starting UI..."
+exec /init
